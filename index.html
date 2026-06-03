@@ -172,6 +172,16 @@
     70% { box-shadow: 0 0 0 15px rgba(66, 133, 244, 0); }
     100% { box-shadow: 0 0 0 0 rgba(66, 133, 244, 0); }
 }
+/* 구역 종류 선택 팝업 버튼 디자인 */
+        .zone-btn {
+            display: block; width: 100%; margin: 6px 0; padding: 10px;
+            border: none; border-radius: 8px; color: white;
+            font-weight: bold; cursor: pointer; font-size: 13px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .btn-danger { background: #ea4335; }
+        .btn-noise { background: #fbbc05; color: #333 !important; } /* 노란색은 글씨를 어둡게 */
+        .btn-crowd { background: #a142f4; }
     </style>
 </head>
 <body>
@@ -301,7 +311,7 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
     // -------------------------------
     function saveNoiseZones() {
         var plainZones = noiseZones.map(function(zone) {
-            return { lat: zone.lat, lng: zone.lng };
+            return { lat: zone.lat, lng: zone.lng, type: zone.type || 'danger' };
         });
         localStorage.setItem(NOISE_ZONES_STORAGE_KEY, JSON.stringify(plainZones));
     }
@@ -316,7 +326,7 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
 
             zones.forEach(function(zone) {
                 if (typeof zone.lat === 'number' && typeof zone.lng === 'number') {
-                    addNoiseZone(zone.lat, zone.lng, true, false);
+                    addNoiseZone(zone.lat, zone.lng, true, false, zone.type || 'danger');
                 }
             });
             return true;
@@ -661,7 +671,7 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
                 
                 for (let k = 0; k < noiseZones.length; k++) {
                     let zone = noiseZones[k];
-                    if (getDistance(currentPoint, [zone.lat, zone.lng]) < 55) { 
+                    if (getDistance(currentPoint, [zone.lat, zone.lng]) < 40) { 
                         return false; 
                     }
                 }
@@ -825,23 +835,27 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
     // -------------------------------
     // 5. 소음 구역 추가
     // -------------------------------
-    function addNoiseZone(lat, lng, isAuto = false, shouldPersist = true) {
+    function addNoiseZone(lat, lng, isAuto = false, shouldPersist = true, type = 'danger') {
+        var zoneStyle = { color: 'red', fillColor: '#f03', label: '🔴 위험 지역' };
+        if (type === 'noise') zoneStyle = { color: '#fbbc05', fillColor: '#fbbc05', label: '🟡 소음 예상 지역' };
+        if (type === 'crowd') zoneStyle = { color: '#a142f4', fillColor: '#a142f4', label: '🟣 사람 많은 지역' };
+
         var circle = L.circle([lat, lng], {
-            color: 'red',
-            fillColor: '#f03',
+            color: zoneStyle.color,
+            fillColor: zoneStyle.fillColor,
             fillOpacity: 0.3,
             radius: 50
         }).addTo(map);
         
         var marker = L.marker([lat, lng], {
             draggable: false,
-            title: '위험 예상 지역 (탭해서 개별 삭제)'
-        }).addTo(map).bindPopup('🔴 위험 지역<br>마커를 다시 누르면 삭제할 수 있습니다.');
+            title: zoneStyle.label + ' (탭해서 개별 삭제)'
+        }).addTo(map).bindPopup(zoneStyle.label + '<br>마커를 다시 누르면 삭제할 수 있습니다.');
         
         marker.on('click', function() {
             var targetMarker = this;
             this.openPopup();
-            if (confirm('이 위험 지역만 삭제하시겠습니까?')) {
+            if (confirm('이 구역을 삭제하시겠습니까?')) {
                 removeZoneByMarker(targetMarker);
             }
         });
@@ -849,6 +863,7 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
         var zone = {
             lat: lat,
             lng: lng,
+            type: type, // 종류(색상) 저장
             circle: circle,
             marker: marker
         };
@@ -859,10 +874,9 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
         }
         
         if (!isAuto) {
-            alert(`✅ 위험 지역이 등록되었습니다.`);
+            alert(`✅ ${zoneStyle.label}이(가) 등록되었습니다.`);
         }
         
-        // 현재 모드에 맞춰 경고 업데이트
         if (currentMode === 'demo' && demoMarker) {
             updateWarningByPosition([demoMarker.getLatLng().lat, demoMarker.getLatLng().lng]);
         } else if (currentMode === 'gps' && currentLatLng) {
@@ -883,7 +897,6 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
             saveNoiseZones();
             map.closePopup();
             
-            // 삭제 후 경고 상태 업데이트
             if (currentMode === 'demo' && demoMarker) {
                 updateWarningByPosition([demoMarker.getLatLng().lat, demoMarker.getLatLng().lng]);
             } else if (currentMode === 'gps' && currentLatLng) {
@@ -993,17 +1006,38 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
     });
 
     // -------------------------------
-    // 8. 우클릭(길게 누르기)으로 소음 구역 등록
+    // 8. 우클릭(길게 누르기)으로 구역 종류 선택
     // -------------------------------
+    var contextMenuPopup = null;
+
     map.on('contextmenu', function(e) {
         e.originalEvent.preventDefault();
         var lat = e.latlng.lat;
         var lng = e.latlng.lng;
         
-        if (confirm(`이 위치에 위험 지역을 등록하시겠습니까?`)) {
-            addNoiseZone(lat, lng);
-        }
+        // 팝업 안에 들어갈 버튼 HTML
+        var popupContent = `
+            <div style="text-align: center; min-width: 140px;">
+                <b style="font-size: 14px;">어떤 구역을 추가할까요?</b><br><br>
+                <button class="zone-btn btn-danger" onclick="confirmZoneAdd(${lat}, ${lng}, 'danger')">🔴 위험 지역</button>
+                <button class="zone-btn btn-noise" onclick="confirmZoneAdd(${lat}, ${lng}, 'noise')">🟡 소음 예상 지역</button>
+                <button class="zone-btn btn-crowd" onclick="confirmZoneAdd(${lat}, ${lng}, 'crowd')">🟣 사람 많은 지역</button>
+            </div>
+        `;
+
+        contextMenuPopup = L.popup()
+            .setLatLng(e.latlng)
+            .setContent(popupContent)
+            .openOn(map);
     });
+
+    // 팝업의 버튼을 눌렀을 때 실행될 함수
+    window.confirmZoneAdd = function(lat, lng, type) {
+        addNoiseZone(lat, lng, false, true, type); // 선택한 종류(type)로 등록
+        if (contextMenuPopup) {
+            map.closePopup(contextMenuPopup); // 버튼 누르면 팝업 닫기
+        }
+    };
 
     // -------------------------------
     // 9. 버튼 이벤트 및 초기화
