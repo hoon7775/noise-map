@@ -1069,6 +1069,7 @@ L.tileLayer('https://xdworld.vworld.kr/2d/Base/202002/{z}/{x}/{y}.png').addTo(ma
         
         alert('🎓 발표 시연 준비 완료!\n\n[사용법]\n1. 지도를 우클릭(길게 누르기) → 위험 지역 추가\n2. 파란색 마커를 빨간 원 쪽으로 드래그 → 경고 발생!\n3. "시연 위치 초기화" 버튼으로 처음 위치로 복귀');
     }, 500);
+
 // ------------------------------------------------
 // [추가 기능] 위험 지역 파일 내보내기 (Export)
 // ------------------------------------------------
@@ -1078,9 +1079,9 @@ document.getElementById('export-btn').addEventListener('click', function() {
         return;
     }
 
-    // 1. 순수 위경도 데이터만 배열로 추출
+    // 1. 순수 위경도 데이터와 함께 '구역 종류(type)'도 추출하도록 수정
     var plainData = noiseZones.map(function(zone) {
-        return { lat: zone.lat, lng: zone.lng };
+        return { lat: zone.lat, lng: zone.lng, type: zone.type || 'danger' };
     });
 
     // 2. JSON 문자열로 변환 및 블롭(Blob) 생성
@@ -1099,7 +1100,7 @@ document.getElementById('export-btn').addEventListener('click', function() {
     link.click();
     document.body.removeChild(link);
     
-    alert('📥 현재 설정된 위험 지역이 파일로 저장되었습니다.\n이 파일을 다른 사람에게 공유해보세요!');
+    alert('📥 현재 설정된 위험 지역(분류 색상 포함)이 파일로 저장되었습니다.\n이 파일을 다른 사람에게 공유해보세요!');
 });
 
 // ------------------------------------------------
@@ -1142,7 +1143,8 @@ document.getElementById('import-file-input').addEventListener('change', function
             importedZones.forEach(function(zone) {
                 if (typeof zone.lat === 'number' && typeof zone.lng === 'number') {
                     // 세 번째 인자 true(자동등록 알림 생략), 네 번째 인자 false(마지막에 한 번에 저장하기 위함)
-                    addNoiseZone(zone.lat, zone.lng, true, false);
+                    // 💡 다섯 번째 인자로 zone.type을 넘겨주어 저장된 색상을 불러옵니다.
+                    addNoiseZone(zone.lat, zone.lng, true, false, zone.type || 'danger');
                     successCount++;
                 }
             });
@@ -1150,7 +1152,7 @@ document.getElementById('import-file-input').addEventListener('change', function
             // 4. 로컬 스토리지에 최종 반영 및 화면 갱신
             saveNoiseZones();
             
-            alert(`✅ 총 ${successCount}개의 위험 지역을 성공적으로 불러왔습니다!`);
+            alert(`✅ 총 ${successCount}개의 위험 지역을 설정된 색상과 함께 성공적으로 불러왔습니다!`);
             
             // 첫 번째 위험 지역 위치로 지도 이동 (시각적 확인용)
             if (importedZones.length > 0) {
